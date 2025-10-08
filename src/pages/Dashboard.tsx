@@ -1,4 +1,3 @@
-import React from 'react';
 import { Row, Col, Card, Statistic, Typography } from 'antd';
 import { DollarOutlined, ShoppingCartOutlined, CarOutlined, ToolOutlined } from '@ant-design/icons';
 import EChart from '../charts/EChart';
