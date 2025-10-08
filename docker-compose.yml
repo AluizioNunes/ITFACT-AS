@@ -29,7 +29,7 @@ services:
       - REDIS_PORT=${REDIS_PORT:-6379}
       - RABBITMQ_URL=amqp://${RABBITMQ_USER:-itfact}:${RABBITMQ_PASS:-itfactpwd}@as-rabbitmq:5672
       - MONGO_URI=${MONGO_URI:-mongodb://as-mongodb:27017/itfact}
-      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-as-minio:9000}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-as-minio:9101}
     ports:
       - "3000:3000"
     depends_on:
@@ -114,10 +114,9 @@ services:
     environment:
       - MINIO_ROOT_USER=${MINIO_ROOT_USER:-itfact}
       - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-itfactpwd}
-    command: server /data --console-address ":9001"
+    command: server /data --address ":9101"
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "9101:9101"
     volumes:
       - miniodata:/data
     networks: [itfact]
