@@ -1,0 +1,164 @@
+version: "3.9"
+services:
+  web:
+    build:
+      context: ../../
+      dockerfile: Dockerfile
+    container_name: itfact-web
+    environment:
+      - VITE_API_BASE=/api
+      - VITE_CATALOG_BASE=/catalog
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      - api-core
+      - api-catalog
+    networks: [itfact]
+
+  api-core:
+    build:
+      context: ../../Backend/NestJS
+      dockerfile: Dockerfile
+    container_name: itfact-api-core
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-itfact}:${POSTGRES_PASSWORD:-itfactpwd}@postgres:5432/${POSTGRES_DB:-itfact}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER:-itfact}:${RABBITMQ_PASS:-itfactpwd}@rabbitmq:5672
+      - MONGO_URI=${MONGO_URI:-mongodb://mongo:27017/itfact}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-minio:9000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+      - mongo
+      - minio
+    networks: [itfact]
+
+  api-catalog:
+    build:
+      context: ../../Backend/FastAPI
+      dockerfile: Dockerfile
+    container_name: itfact-api-catalog
+    environment:
+      - MONGO_URI=${MONGO_URI:-mongodb://mongo:27017/itfact}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER:-itfact}:${RABBITMQ_PASS:-itfactpwd}@rabbitmq:5672
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mongo
+      - redis
+      - rabbitmq
+    networks: [itfact]
+
+  postgres:
+    image: postgres:16
+    container_name: itfact-postgres
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-itfact}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-itfactpwd}
+      - POSTGRES_DB=${POSTGRES_DB:-itfact}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init/postgres:/docker-entrypoint-initdb.d
+    networks: [itfact]
+
+  mongo:
+    image: mongo:7
+    container_name: itfact-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodata:/data/db
+    networks: [itfact]
+
+  redis:
+    image: redis:7-alpine
+    container_name: itfact-redis
+    ports:
+      - "6379:6379"
+    networks: [itfact]
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: itfact-rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:-itfact}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS:-itfactpwd}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks: [itfact]
+
+  minio:
+    image: minio/minio:latest
+    container_name: itfact-minio
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-itfact}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-itfactpwd}
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+    networks: [itfact]
+
+  loki:
+    image: grafana/loki:2.9.6
+    container_name: itfact-loki
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+    networks: [itfact]
+
+  promtail:
+    image: grafana/promtail:2.9.6
+    container_name: itfact-promtail
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./observability/promtail-config.yml:/etc/promtail/config.yml
+    command: -config.file=/etc/promtail/config.yml
+    depends_on: [loki]
+    networks: [itfact]
+
+  grafana:
+    image: grafana/grafana:10.4.6
+    container_name: itfact-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASS:-admin}
+    ports:
+      - "3001:3000"
+    depends_on: [loki]
+    networks: [itfact]
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: itfact-n8n
+    environment:
+      - N8N_HOST=n8n
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8ndata:/home/node/.n8n
+    networks: [itfact]
+
+networks:
+  itfact: {}
+
+volumes:
+  pgdata: {}
+  mongodata: {}
+  miniodata: {}
+  n8ndata: {}

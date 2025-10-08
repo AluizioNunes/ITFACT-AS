@@ -1,0 +1,756 @@
+// Backend/NestJS/prisma/schema.prisma
+// ITFACT - AUTO SERVICES SUITE
+// Schema completo conforme documento de arquitetura v1.0
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ============================================================================
+// IDENTIDADE E SEGURANÇA
+// ============================================================================
+
+model Tenant {
+  id         String        @id @default(uuid()) @db.Uuid
+  name       String
+  plan       String        // basic|professional|enterprise|suite
+  status     String        @default("active") // active|suspended|trial
+  created_at DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at DateTime      @default(now()) @db.Timestamptz(6)
+  
+  users             UserAccount[]
+  roles             Role[]
+  apiKeys           ApiKey[]
+  products          Product[]
+  productCategories ProductCategory[]
+  serviceCatalogs   ServiceCatalog[]
+  customers         Customer[]
+  vehicles          Vehicle[]
+  serviceOrders     ServiceOrder[]
+  warehouses        Warehouse[]
+  stocks            Stock[]
+  stockMoves        StockMove[]
+  suppliers         Supplier[]
+  supplierProducts  SupplierProduct[]
+  purchaseOrders    PurchaseOrder[]
+  grns              GRN[]
+  paymentMethods    PaymentMethod[]
+  invoices          Invoice[]
+  payments          Payment[]
+  taxRules          TaxRule[]
+  webhookSubscriptions WebhookSubscription[]
+  integrationProviders IntegrationProvider[]
+  outboxEvents      OutboxEvent[]
+  whatsappMessages  WhatsappMessage[]
+  auditLogs         AuditLog[]
+  loginAudits       LoginAudit[]
+  aiJobs            AIJob[]
+  aiDocuments       AIDocument[]
+}
+
+model UserAccount {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenant_id     String    @db.Uuid
+  name          String
+  email         String
+  phone         String?
+  password_hash String
+  is_active     Boolean   @default(true)
+  last_login    DateTime? @db.Timestamptz(6)
+  created_at    DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime  @default(now()) @db.Timestamptz(6)
+
+  tenant    Tenant     @relation(fields: [tenant_id], references: [id])
+  userRoles UserRole[]
+  assignedServiceOrders ServiceOrder[] @relation("AssignedTo")
+  auditLogs AuditLog[]
+  loginAudits LoginAudit[]
+  aiJobs AIJob[]
+  serviceOrderEvents ServiceOrderEvent[]
+
+  @@unique([tenant_id, email])
+  @@index([tenant_id])
+}
+
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenant_id   String   @db.Uuid
+  name        String
+  description String?
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  tenant          Tenant           @relation(fields: [tenant_id], references: [id])
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
+
+  @@unique([tenant_id, name])
+  @@index([tenant_id])
+}
+
+model Permission {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique // os.read, os.write, inventory.move, etc
+  description String?
+
+  rolePermissions RolePermission[]
+}
+
+model RolePermission {
+  role_id       String @db.Uuid
+  permission_id String @db.Uuid
+
+  role       Role       @relation(fields: [role_id], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+
+  @@id([role_id, permission_id])
+}
+
+model UserRole {
+  user_id String @db.Uuid
+  role_id String @db.Uuid
+
+  user UserAccount @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  role Role        @relation(fields: [role_id], references: [id], onDelete: Cascade)
+
+  @@id([user_id, role_id])
+}
+
+model ApiKey {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenant_id  String    @db.Uuid
+  name       String
+  hashed_key String
+  scopes     String[]
+  expires_at DateTime? @db.Timestamptz(6)
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id])
+
+  @@index([tenant_id])
+}
+
+// ============================================================================
+// CATÁLOGO E SERVIÇOS
+// ============================================================================
+
+model ProductCategory {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenant_id String   @db.Uuid
+  name      String
+  parent_id String?  @db.Uuid
+
+  tenant   Tenant            @relation(fields: [tenant_id], references: [id])
+  parent   ProductCategory?  @relation("CategoryHierarchy", fields: [parent_id], references: [id])
+  children ProductCategory[] @relation("CategoryHierarchy")
+  products Product[]
+  serviceCatalogs ServiceCatalog[]
+
+  @@index([tenant_id])
+  @@index([parent_id])
+}
+
+model Brand {
+  id   String @id @default(uuid()) @db.Uuid
+  name String
+  type String // vehicle|parts
+
+  products Product[]
+
+  @@unique([name, type])
+}
+
+model Product {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenant_id   String   @db.Uuid
+  sku         String
+  name        String
+  category_id String?  @db.Uuid
+  brand_id    String?  @db.Uuid
+  unit        String?
+  barcode     String?
+  is_active   Boolean  @default(true)
+  attributes  Json     @default("{}")
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  tenant           Tenant             @relation(fields: [tenant_id], references: [id])
+  category         ProductCategory?   @relation(fields: [category_id], references: [id])
+  brand            Brand?             @relation(fields: [brand_id], references: [id])
+  supplierProducts SupplierProduct[]
+  stocks           Stock[]
+  stockMoves       StockMove[]
+  purchaseOrderItems PurchaseOrderItem[]
+  grnItems         GRNItem[]
+
+  @@unique([tenant_id, sku])
+  @@index([tenant_id])
+  @@index([category_id])
+  @@index([brand_id])
+}
+
+model ServiceCatalog {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenant_id     String   @db.Uuid
+  code          String
+  name          String
+  description   String?
+  default_price Decimal  @default(0) @db.Decimal(14, 2)
+  labor_hours   Decimal  @default(0) @db.Decimal(10, 2)
+  category_id   String?  @db.Uuid
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime @default(now()) @db.Timestamptz(6)
+
+  tenant   Tenant           @relation(fields: [tenant_id], references: [id])
+  category ProductCategory? @relation(fields: [category_id], references: [id])
+
+  @@unique([tenant_id, code])
+  @@index([tenant_id])
+}
+
+// ============================================================================
+// CLIENTES E VEÍCULOS
+// ============================================================================
+
+model Customer {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenant_id      String   @db.Uuid
+  type           String   // individual|company
+  name           String
+  document       String?  // CPF/CNPJ
+  email          String?
+  phone          String?
+  address        Json?
+  whatsapp_optin Boolean  @default(false)
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime @default(now()) @db.Timestamptz(6)
+
+  tenant        Tenant         @relation(fields: [tenant_id], references: [id])
+  vehicles      Vehicle[]
+  serviceOrders ServiceOrder[]
+
+  @@index([tenant_id])
+  @@index([document])
+  @@index([email])
+}
+
+model Vehicle {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenant_id   String   @db.Uuid
+  customer_id String   @db.Uuid
+  plate       String
+  vin         String?
+  brand       String?
+  model       String?
+  year        Int?
+  engine      String?
+  color       String?
+  mileage     Int?
+  notes       String?
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  tenant        Tenant         @relation(fields: [tenant_id], references: [id])
+  customer      Customer       @relation(fields: [customer_id], references: [id])
+  serviceOrders ServiceOrder[]
+
+  @@index([tenant_id])
+  @@index([customer_id])
+  @@index([plate])
+}
+
+// ============================================================================
+// ORDEM DE SERVIÇO (OS)
+// ============================================================================
+
+model ServiceOrder {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenant_id      String    @db.Uuid
+  number         String
+  customer_id    String    @db.Uuid
+  vehicle_id     String    @db.Uuid
+  status         String    // draft|approved|in_service|awaiting_parts|completed|invoiced|canceled
+  open_date      DateTime  @default(now()) @db.Date
+  promised_date  DateTime? @db.Date
+  close_date     DateTime? @db.Date
+  assigned_to    String?   @db.Uuid
+  source         String?   // counter|whatsapp|api|n8n
+  total_parts    Decimal   @default(0) @db.Decimal(14, 2)
+  total_labor    Decimal   @default(0) @db.Decimal(14, 2)
+  total_discount Decimal   @default(0) @db.Decimal(14, 2)
+  total_tax      Decimal   @default(0) @db.Decimal(14, 2)
+  total_amount   Decimal   @default(0) @db.Decimal(14, 2)
+  notes          String?
+  created_at     DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime  @default(now()) @db.Timestamptz(6)
+
+  tenant       Tenant               @relation(fields: [tenant_id], references: [id])
+  customer     Customer             @relation(fields: [customer_id], references: [id])
+  vehicle      Vehicle              @relation(fields: [vehicle_id], references: [id])
+  assignedUser UserAccount?         @relation("AssignedTo", fields: [assigned_to], references: [id])
+  items        ServiceOrderItem[]
+  events       ServiceOrderEvent[]
+  invoices     Invoice[]
+
+  @@unique([tenant_id, number])
+  @@index([tenant_id])
+  @@index([customer_id])
+  @@index([vehicle_id])
+  @@index([status])
+  @@index([open_date])
+}
+
+model ServiceOrderItem {
+  id                 String  @id @default(uuid()) @db.Uuid
+  service_order_id   String  @db.Uuid
+  item_type          String  // part|labor|fee
+  product_id         String? @db.Uuid
+  service_catalog_id String? @db.Uuid
+  description        String?
+  qty                Decimal @default(1) @db.Decimal(14, 3)
+  unit_price         Decimal @default(0) @db.Decimal(14, 2)
+  discount           Decimal @default(0) @db.Decimal(14, 2)
+  tax_rate           Decimal @default(0) @db.Decimal(5, 2)
+  total              Decimal @default(0) @db.Decimal(14, 2)
+
+  serviceOrder ServiceOrder @relation(fields: [service_order_id], references: [id], onDelete: Cascade)
+
+  @@index([service_order_id])
+}
+
+model ServiceOrderEvent {
+  id               String   @id @default(uuid()) @db.Uuid
+  service_order_id String   @db.Uuid
+  event_type       String   // status_change|comment|attachment|message|inventory
+  payload          Json
+  created_by       String?  @db.Uuid
+  created_at       DateTime @default(now()) @db.Timestamptz(6)
+
+  serviceOrder ServiceOrder @relation(fields: [service_order_id], references: [id], onDelete: Cascade)
+  user         UserAccount? @relation(fields: [created_by], references: [id])
+
+  @@index([service_order_id])
+  @@index([created_at])
+}
+
+// ============================================================================
+// ESTOQUE E LOGÍSTICA
+// ============================================================================
+
+model Warehouse {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenant_id  String   @db.Uuid
+  name       String
+  address    Json?
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  tenant           Tenant      @relation(fields: [tenant_id], references: [id])
+  stocks           Stock[]
+  stockMovesFrom   StockMove[] @relation("FromWarehouse")
+  stockMovesTo     StockMove[] @relation("ToWarehouse")
+
+  @@index([tenant_id])
+}
+
+model Stock {
+  id           String  @id @default(uuid()) @db.Uuid
+  tenant_id    String  @db.Uuid
+  warehouse_id String  @db.Uuid
+  product_id   String  @db.Uuid
+  on_hand      Decimal @default(0) @db.Decimal(14, 3)
+  reserved     Decimal @default(0) @db.Decimal(14, 3)
+  min_level    Decimal @default(0) @db.Decimal(14, 3)
+  max_level    Decimal @default(0) @db.Decimal(14, 3)
+
+  tenant    Tenant    @relation(fields: [tenant_id], references: [id])
+  warehouse Warehouse @relation(fields: [warehouse_id], references: [id])
+  product   Product   @relation(fields: [product_id], references: [id])
+
+  @@unique([tenant_id, warehouse_id, product_id])
+  @@index([tenant_id])
+  @@index([warehouse_id])
+  @@index([product_id])
+}
+
+model StockMove {
+  id                  String   @id @default(uuid()) @db.Uuid
+  tenant_id           String   @db.Uuid
+  product_id          String   @db.Uuid
+  from_warehouse_id   String?  @db.Uuid
+  to_warehouse_id     String?  @db.Uuid
+  qty                 Decimal  @db.Decimal(14, 3)
+  type                String   // purchase|sale|transfer|adjustment|return|consumption
+  related_type        String?  // po|so|os|grn|invoice|manual
+  related_id          String?  @db.Uuid
+  unit_cost           Decimal  @default(0) @db.Decimal(14, 2)
+  created_at          DateTime @default(now()) @db.Timestamptz(6)
+
+  tenant        Tenant     @relation(fields: [tenant_id], references: [id])
+  product       Product    @relation(fields: [product_id], references: [id])
+  fromWarehouse Warehouse? @relation("FromWarehouse", fields: [from_warehouse_id], references: [id])
+  toWarehouse   Warehouse? @relation("ToWarehouse", fields: [to_warehouse_id], references: [id])
+
+  @@index([tenant_id])
+  @@index([product_id])
+  @@index([created_at])
+  @@index([type])
+}
+
+// ============================================================================
+// COMPRAS E FORNECEDORES
+// ============================================================================
+
+model Supplier {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenant_id      String   @db.Uuid
+  corporate_name String
+  document       String?
+  email          String?
+  phone          String?
+  address        Json?
+  is_active      Boolean  @default(true)
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime @default(now()) @db.Timestamptz(6)
+
+  tenant           Tenant            @relation(fields: [tenant_id], references: [id])
+  supplierProducts SupplierProduct[]
+  purchaseOrders   PurchaseOrder[]
+
+  @@index([tenant_id])
+  @@index([document])
+}
+
+model SupplierProduct {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenant_id       String   @db.Uuid
+  supplier_id     String   @db.Uuid
+  product_id      String   @db.Uuid
+  supplier_sku    String?
+  last_cost       Decimal  @default(0) @db.Decimal(14, 2)
+  lead_time_days  Int      @default(0)
+  conditions      Json?
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime @default(now()) @db.Timestamptz(6)
+
+  tenant   Tenant   @relation(fields: [tenant_id], references: [id])
+  supplier Supplier @relation(fields: [supplier_id], references: [id])
+  product  Product  @relation(fields: [product_id], references: [id])
+
+  @@unique([tenant_id, supplier_id, product_id])
+  @@index([tenant_id])
+  @@index([supplier_id])
+  @@index([product_id])
+}
+
+model PurchaseOrder {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenant_id     String    @db.Uuid
+  supplier_id   String    @db.Uuid
+  status        String    // draft|approved|sent|partial|received|canceled
+  expected_date DateTime? @db.Date
+  total_amount  Decimal   @default(0) @db.Decimal(14, 2)
+  currency      String    @default("BRL")
+  notes         String?
+  created_at    DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime  @default(now()) @db.Timestamptz(6)
+
+  tenant   Tenant              @relation(fields: [tenant_id], references: [id])
+  supplier Supplier            @relation(fields: [supplier_id], references: [id])
+  items    PurchaseOrderItem[]
+  grns     GRN[]
+
+  @@index([tenant_id])
+  @@index([supplier_id])
+  @@index([status])
+}
+
+model PurchaseOrderItem {
+  id                String  @id @default(uuid()) @db.Uuid
+  purchase_order_id String  @db.Uuid
+  product_id        String  @db.Uuid
+  qty               Decimal @db.Decimal(14, 3)
+  unit_cost         Decimal @db.Decimal(14, 2)
+  discount          Decimal @default(0) @db.Decimal(14, 2)
+  tax_rate          Decimal @default(0) @db.Decimal(5, 2)
+  total             Decimal @db.Decimal(14, 2)
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchase_order_id], references: [id], onDelete: Cascade)
+  product       Product       @relation(fields: [product_id], references: [id])
+
+  @@index([purchase_order_id])
+}
+
+model GRN {
+  id                String    @id @default(uuid()) @db.Uuid
+  tenant_id         String    @db.Uuid
+  purchase_order_id String    @db.Uuid
+  received_date     DateTime  @db.Date
+  invoice_number    String?
+  status            String    // pending|received|reconciled
+  created_at        DateTime  @default(now()) @db.Timestamptz(6)
+
+  tenant        Tenant        @relation(fields: [tenant_id], references: [id])
+  purchaseOrder PurchaseOrder @relation(fields: [purchase_order_id], references: [id])
+  items         GRNItem[]
+
+  @@index([tenant_id])
+  @@index([purchase_order_id])
+}
+
+model GRNItem {
+  id           String  @id @default(uuid()) @db.Uuid
+  grn_id       String  @db.Uuid
+  product_id   String  @db.Uuid
+  qty_received Decimal @db.Decimal(14, 3)
+  unit_cost    Decimal @db.Decimal(14, 2)
+
+  grn     GRN     @relation(fields: [grn_id], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [product_id], references: [id])
+
+  @@index([grn_id])
+}
+
+// ============================================================================
+// FINANCEIRO
+// ============================================================================
+
+model PaymentMethod {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenant_id  String   @db.Uuid
+  name       String
+  type       String   // cash|card|pix|boleto|transfer
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  tenant   Tenant    @relation(fields: [tenant_id], references: [id])
+  payments Payment[]
+
+  @@index([tenant_id])
+}
+
+model Invoice {
+  id                String    @id @default(uuid()) @db.Uuid
+  tenant_id         String    @db.Uuid
+  service_order_id  String?   @db.Uuid
+  number            String
+  issue_date        DateTime  @db.Date
+  due_date          DateTime  @db.Date
+  status            String    // open|paid|canceled
+  subtotal          Decimal   @db.Decimal(14, 2)
+  tax               Decimal   @default(0) @db.Decimal(14, 2)
+  discount          Decimal   @default(0) @db.Decimal(14, 2)
+  total             Decimal   @db.Decimal(14, 2)
+  created_at        DateTime  @default(now()) @db.Timestamptz(6)
+
+  tenant       Tenant        @relation(fields: [tenant_id], references: [id])
+  serviceOrder ServiceOrder? @relation(fields: [service_order_id], references: [id])
+  payments     Payment[]
+
+  @@unique([tenant_id, number])
+  @@index([tenant_id])
+  @@index([service_order_id])
+  @@index([status])
+}
+
+model Payment {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenant_id       String   @db.Uuid
+  invoice_id      String   @db.Uuid
+  amount          Decimal  @db.Decimal(14, 2)
+  method_id       String   @db.Uuid
+  paid_at         DateTime @db.Timestamptz(6)
+  transaction_ref String?
+  gateway         Json?
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+
+  tenant  Tenant        @relation(fields: [tenant_id], references: [id])
+  invoice Invoice       @relation(fields: [invoice_id], references: [id])
+  method  PaymentMethod @relation(fields: [method_id], references: [id])
+
+  @@index([tenant_id])
+  @@index([invoice_id])
+}
+
+model TaxRule {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenant_id  String   @db.Uuid
+  name       String
+  region     String?
+  rate       Decimal  @db.Decimal(5, 2)
+  applies_to String   // product|service
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id])
+
+  @@index([tenant_id])
+}
+
+// ============================================================================
+// INTEGRAÇÕES
+// ============================================================================
+
+model WebhookSubscription {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenant_id  String   @db.Uuid
+  event      String   // os.created|os.updated|invoice.paid|stock.low|custom
+  url        String
+  secret     String
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id])
+
+  @@index([tenant_id])
+  @@index([event])
+}
+
+model IntegrationProvider {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenant_id   String   @db.Uuid
+  name        String   // n8n|whatsapp_meta|whatsapp_twilio|supplier_x
+  credentials Json
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id])
+
+  @@index([tenant_id])
+}
+
+model OutboxEvent {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenant_id      String    @db.Uuid
+  aggregate_type String    // service_order|invoice|stock_move|supplier
+  aggregate_id   String    @db.Uuid
+  event_type     String
+  payload        Json
+  status         String    // pending|processing|sent|failed
+  attempts       Int       @default(0)
+  next_retry_at  DateTime? @db.Timestamptz(6)
+  created_at     DateTime  @default(now()) @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id])
+
+  @@index([tenant_id])
+  @@index([status])
+  @@index([next_retry_at])
+}
+
+model WhatsappMessage {
+  id                  String   @id @default(uuid()) @db.Uuid
+  tenant_id           String   @db.Uuid
+  contact_phone       String
+  direction           String   // in|out
+  template_name       String?
+  content             String
+  status              String   // queued|sent|delivered|read|failed
+  related_type        String?  // service_order|customer
+  related_id          String?  @db.Uuid
+  provider_message_id String?
+  created_at          DateTime @default(now()) @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id])
+
+  @@index([tenant_id])
+  @@index([contact_phone])
+  @@index([related_id])
+  @@index([status])
+}
+
+// ============================================================================
+// AUDITORIA
+// ============================================================================
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenant_id  String   @db.Uuid
+  user_id    String?  @db.Uuid
+  action     String   // create|update|delete|login|status_change|permission_change|attachment
+  entity     String
+  entity_id  String?  @db.Uuid
+  ip         String?
+  user_agent String?
+  diff       Json?
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  tenant Tenant       @relation(fields: [tenant_id], references: [id])
+  user   UserAccount? @relation(fields: [user_id], references: [id])
+
+  @@index([tenant_id])
+  @@index([user_id])
+  @@index([entity])
+  @@index([created_at])
+}
+
+model LoginAudit {
+  id         String   @id @default(uuid()) @db.Uuid
+  user_id    String?  @db.Uuid
+  tenant_id  String   @db.Uuid
+  ip         String?
+  user_agent String?
+  success    Boolean
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  tenant Tenant       @relation(fields: [tenant_id], references: [id])
+  user   UserAccount? @relation(fields: [user_id], references: [id])
+
+  @@index([tenant_id])
+  @@index([user_id])
+  @@index([created_at])
+}
+
+// ============================================================================
+// IA EMBUTIDA
+// ============================================================================
+
+model AIJob {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenant_id    String    @db.Uuid
+  type         String    // estimate|summarize|classify|extract|rag
+  status       String    // queued|running|done|failed
+  input        Json
+  output       Json?
+  created_by   String?   @db.Uuid
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+  completed_at DateTime? @db.Timestamptz(6)
+
+  tenant Tenant       @relation(fields: [tenant_id], references: [id])
+  user   UserAccount? @relation(fields: [created_by], references: [id])
+
+  @@index([tenant_id])
+  @@index([status])
+  @@index([type])
+}
+
+model AIDocument {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenant_id  String   @db.Uuid
+  source     String   // manual|invoice|chat|website
+  title      String
+  content    String
+  meta       Json?
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  tenant     Tenant        @relation(fields: [tenant_id], references: [id])
+  embeddings AIEmbedding[]
+
+  @@index([tenant_id])
+}
+
+model AIEmbedding {
+  id             String @id @default(uuid()) @db.Uuid
+  tenant_id      String @db.Uuid
+  ai_document_id String @db.Uuid
+  embedding      String // Armazenar como string JSON até adicionar pgvector
+  chunk_index    Int
+  token_count    Int
+
+  document AIDocument @relation(fields: [ai_document_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@index([ai_document_id])
+}
