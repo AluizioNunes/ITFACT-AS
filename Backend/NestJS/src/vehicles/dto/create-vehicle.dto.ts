@@ -1,4 +1,4 @@
-import { IsString, IsUUID, IsOptional, IsInt, IsString } from 'class-validator';
+import { IsString, IsUUID, IsOptional, IsInt } from 'class-validator';
 
 export class CreateVehicleDto {
   @IsString()

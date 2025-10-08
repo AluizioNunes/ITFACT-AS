@@ -1,28 +1,24 @@
 # Backend/NestJS/Dockerfile
-FROM node:20-alpine AS deps
+FROM node:20-alpine
 WORKDIR /app
-COPY package.json package-lock.json* pnpm-lock.yaml* yarn.lock* ./
-RUN \
-  if [ -f pnpm-lock.yaml ]; then npm i -g pnpm && pnpm i --frozen-lockfile; \
-  elif [ -f yarn.lock ]; then yarn --frozen-lockfile; \
-  else npm install; fi
 
-FROM node:20-alpine AS build
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
-RUN npx prisma generate
-RUN \
-  if [ -f pnpm-lock.yaml ]; then npm i -g pnpm && pnpm build; \
-  elif [ -f yarn.lock ]; then yarn build; \
-  else npm run build; fi
-
-FROM node:20-alpine AS prod
-WORKDIR /app
-ENV NODE_ENV=production
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/prisma ./prisma
+# Copy dependency files
 COPY package.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy source code
+COPY . .
+
+# Generate Prisma client
+RUN npx prisma generate
+
+# Build the application
+RUN npm run build
+
+# Expose port
 EXPOSE 3000
+
+# Start the application
 CMD ["node", "dist/main.js"]
