@@ -1,11 +1,11 @@
-# Backend/NestJS/Dockerfile
+# services/api-core/Dockerfile
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json* pnpm-lock.yaml* yarn.lock* ./
 RUN \
   if [ -f pnpm-lock.yaml ]; then npm i -g pnpm && pnpm i --frozen-lockfile; \
   elif [ -f yarn.lock ]; then yarn --frozen-lockfile; \
-  else npm install; fi
+  else npm ci; fi
 
 FROM node:20-alpine AS build
 WORKDIR /app
