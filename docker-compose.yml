@@ -2,7 +2,7 @@ version: "3.9"
 services:
   web:
     build:
-      context: ../../
+      context: .
       dockerfile: Dockerfile
     container_name: itfact-web
     environment:
@@ -17,7 +17,7 @@ services:
 
   api-core:
     build:
-      context: ../../Backend/NestJS
+      context: ./Backend/NestJS
       dockerfile: Dockerfile
     container_name: itfact-api-core
     environment:
@@ -40,7 +40,7 @@ services:
 
   api-catalog:
     build:
-      context: ../../Backend/FastAPI
+      context: ./Backend/FastAPI
       dockerfile: Dockerfile
     container_name: itfact-api-catalog
     environment:
