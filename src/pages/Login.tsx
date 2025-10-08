@@ -19,6 +19,15 @@ export default function Login() {
     }
   }
 
+  // Development access function
+  const handleDevelopmentAccess = () => {
+    // Set dummy tokens for development access
+    localStorage.setItem('accessToken', 'dev-access-token')
+    localStorage.setItem('refreshToken', 'dev-refresh-token')
+    notification.success({ message: 'Acesso de Desenvolvimento', description: 'Acesso concedido sem autenticação', duration: 2 })
+    navigate(from, { replace: true })
+  }
+
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f5f7fa', padding: 16 }}>
       <Card style={{ width: 360 }}>
@@ -31,7 +40,8 @@ export default function Login() {
             <Input.Password placeholder="••••••••" />
           </Form.Item>
           <Form.Item>
-            <Button type="primary" htmlType="submit" block>Entrar</Button>
+            <Button type="primary" htmlType="submit" block style={{ marginBottom: 8 }}>Entrar</Button>
+            <Button type="default" block onClick={handleDevelopmentAccess}>Acesso de Desenvolvimento</Button>
           </Form.Item>
         </Form>
       </Card>

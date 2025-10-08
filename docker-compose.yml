@@ -1,64 +1,69 @@
-version: "3.9"
 services:
-  web:
+  # Frontend Service
+  AS-FRONTEND:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: itfact-web
+    container_name: AS-FRONTEND
     environment:
       - VITE_API_BASE=/api
       - VITE_CATALOG_BASE=/catalog
     ports:
       - "${WEB_PORT:-8080}:80"
     depends_on:
-      - api-core
-      - api-catalog
+      - AS-NESTJS
+      - AS-FASTAPI
     networks: [itfact]
+    restart: unless-stopped
 
-  api-core:
+  # Backend Services
+  AS-NESTJS:
     build:
       context: ./Backend/NestJS
       dockerfile: Dockerfile
-    container_name: itfact-api-core
+    container_name: AS-NESTJS
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-itfact}:${POSTGRES_PASSWORD:-itfactpwd}@postgres:5432/${POSTGRES_DB:-itfact}
-      - REDIS_HOST=${REDIS_HOST:-redis}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-itfact}:${POSTGRES_PASSWORD:-itfactpwd}@AS-POSTGRESQL:5432/${POSTGRES_DB:-itfact}
+      - REDIS_HOST=${REDIS_HOST:-AS-REDIS}
       - REDIS_PORT=${REDIS_PORT:-6379}
-      - RABBITMQ_URL=amqp://${RABBITMQ_USER:-itfact}:${RABBITMQ_PASS:-itfactpwd}@rabbitmq:5672
-      - MONGO_URI=${MONGO_URI:-mongodb://mongo:27017/itfact}
-      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-minio:9000}
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER:-itfact}:${RABBITMQ_PASS:-itfactpwd}@AS-RABBITMQ:5672
+      - MONGO_URI=${MONGO_URI:-mongodb://AS-MONGODB:27017/itfact}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-AS-MINIO:9000}
     ports:
       - "3000:3000"
     depends_on:
-      - postgres
-      - redis
-      - rabbitmq
-      - mongo
-      - minio
+      - AS-POSTGRESQL
+      - AS-REDIS
+      - AS-RABBITMQ
+      - AS-MONGODB
+      - AS-MINIO
     networks: [itfact]
+    restart: unless-stopped
 
-  api-catalog:
+  AS-FASTAPI:
     build:
       context: ./Backend/FastAPI
       dockerfile: Dockerfile
-    container_name: itfact-api-catalog
+    container_name: AS-FASTAPI
     environment:
-      - MONGO_URI=${MONGO_URI:-mongodb://mongo:27017/itfact}
-      - REDIS_HOST=${REDIS_HOST:-redis}
+      - MONGO_URI=${MONGO_URI:-mongodb://AS-MONGODB:27017/itfact}
+      - REDIS_HOST=${REDIS_HOST:-AS-REDIS}
       - REDIS_PORT=${REDIS_PORT:-6379}
-      - RABBITMQ_URL=amqp://${RABBITMQ_USER:-itfact}:${RABBITMQ_PASS:-itfactpwd}@rabbitmq:5672
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER:-itfact}:${RABBITMQ_PASS:-itfactpwd}@AS-RABBITMQ:5672
     ports:
       - "8000:8000"
     depends_on:
-      - mongo
-      - redis
-      - rabbitmq
+      - AS-MONGODB
+      - AS-REDIS
+      - AS-RABBITMQ
     networks: [itfact]
+    restart: unless-stopped
 
-  postgres:
-    image: postgres:16
-    container_name: itfact-postgres
+  # Database Services
+  AS-POSTGRESQL:
+    image: postgres:17.6
+    container_name: AS-POSTGRESQL
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-itfact}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-itfactpwd}
@@ -69,26 +74,30 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./init/postgres:/docker-entrypoint-initdb.d
     networks: [itfact]
+    restart: unless-stopped
 
-  mongo:
-    image: mongo:7
-    container_name: itfact-mongo
+  AS-MONGODB:
+    image: mongo:latest
+    container_name: AS-MONGODB
     ports:
       - "27017:27017"
     volumes:
       - mongodata:/data/db
     networks: [itfact]
+    restart: unless-stopped
 
-  redis:
-    image: redis:7-alpine
-    container_name: itfact-redis
+  # Cache and Messaging
+  AS-REDIS:
+    image: redis:latest
+    container_name: AS-REDIS
     ports:
       - "6379:6379"
     networks: [itfact]
+    restart: unless-stopped
 
-  rabbitmq:
+  AS-RABBITMQ:
     image: rabbitmq:3-management
-    container_name: itfact-rabbitmq
+    container_name: AS-RABBITMQ
     environment:
       - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:-itfact}
       - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS:-itfactpwd}
@@ -96,10 +105,12 @@ services:
       - "5672:5672"
       - "15672:15672"
     networks: [itfact]
+    restart: unless-stopped
 
-  minio:
+  # Storage
+  AS-MINIO:
     image: minio/minio:latest
-    container_name: itfact-minio
+    container_name: AS-MINIO
     environment:
       - MINIO_ROOT_USER=${MINIO_ROOT_USER:-itfact}
       - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-itfactpwd}
@@ -110,40 +121,46 @@ services:
     volumes:
       - miniodata:/data
     networks: [itfact]
+    restart: unless-stopped
 
-  loki:
-    image: grafana/loki:2.9.6
-    container_name: itfact-loki
+  # Observability
+  AS-LOKI:
+    image: grafana/loki:latest
+    container_name: AS-LOKI
     command: -config.file=/etc/loki/local-config.yaml
     ports:
       - "3100:3100"
     networks: [itfact]
+    restart: unless-stopped
 
-  promtail:
-    image: grafana/promtail:2.9.6
-    container_name: itfact-promtail
+  AS-PROMTAIL:
+    image: grafana/promtail:latest
+    container_name: AS-PROMTAIL
     volumes:
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - ./observability/promtail-config.yml:/etc/promtail/config.yml
     command: -config.file=/etc/promtail/config.yml
-    depends_on: [loki]
+    depends_on: [AS-LOKI]
     networks: [itfact]
+    restart: unless-stopped
 
-  grafana:
-    image: grafana/grafana:10.4.6
-    container_name: itfact-grafana
+  AS-GRAFANA:
+    image: grafana/grafana:latest
+    container_name: AS-GRAFANA
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASS:-admin}
     ports:
       - "3001:3000"
-    depends_on: [loki]
+    depends_on: [AS-LOKI]
     networks: [itfact]
+    restart: unless-stopped
 
-  n8n:
+  # Automation
+  AS-N8N:
     image: n8nio/n8n:latest
-    container_name: itfact-n8n
+    container_name: AS-N8N
     environment:
       - N8N_HOST=n8n
       - N8N_PORT=5678
@@ -153,12 +170,41 @@ services:
     volumes:
       - n8ndata:/home/node/.n8n
     networks: [itfact]
+    restart: unless-stopped
+
+  # Reverse Proxy
+  AS-NGINX:
+    image: nginx:alpine
+    container_name: AS-NGINX
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - AS-FRONTEND
+      - AS-NESTJS
+      - AS-FASTAPI
+    networks: [itfact]
+    restart: unless-stopped
+
+  # Monitoring
+  AS-PROMETHEUS:
+    image: prom/prometheus:latest
+    container_name: AS-PROMETHEUS
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    networks: [itfact]
+    restart: unless-stopped
 
 networks:
-  itfact: {}
+  itfact:
+    driver: bridge
 
 volumes:
-  pgdata: {}
-  mongodata: {}
-  miniodata: {}
-  n8ndata: {}
+  pgdata:
+  mongodata:
+  miniodata:
+  n8ndata:
