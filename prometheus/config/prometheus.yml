@@ -8,20 +8,20 @@ scrape_configs:
 
   - job_name: 'api-core'
     static_configs:
-      - targets: ['api-core:3000']
+      - targets: ['as-nestjs:3000']
 
   - job_name: 'api-catalog'
     static_configs:
-      - targets: ['api-catalog:8000']
+      - targets: ['as-fastapi:8000']
 
   - job_name: 'postgres'
     static_configs:
-      - targets: ['postgres:9187']
+      - targets: ['as-postgresql:9187']
 
   - job_name: 'redis'
     static_configs:
-      - targets: ['redis:9121']
+      - targets: ['as-redis:9121']
 
   - job_name: 'mongo'
     static_configs:
-      - targets: ['mongo:9216']
+      - targets: ['as-mongodb:9216']
