@@ -1,5 +1,6 @@
 # Root-level Dockerfile for frontend (Vite + Nginx)
-FROM node:20-alpine AS build
+ARG NODE_VERSION=20-alpine3.19
+FROM node:${NODE_VERSION} AS build
 WORKDIR /app
 COPY package.json package-lock.json* pnpm-lock.yaml* yarn.lock* ./
 RUN \

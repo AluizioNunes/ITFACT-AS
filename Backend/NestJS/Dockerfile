@@ -1,5 +1,6 @@
 # Backend/NestJS/Dockerfile
-FROM node:20-alpine
+ARG NODE_VERSION=20-alpine3.19
+FROM node:${NODE_VERSION}
 WORKDIR /app
 
 # Install dependencies for Prisma

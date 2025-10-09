@@ -34,6 +34,69 @@ Currently, two official plugins are available:
 
 The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
+## 🚀 Deployment
+
+### Local Development
+```bash
+# Install dependencies
+npm install
+
+# Start all services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+```
+
+### Portainer Deployment Fixes
+If you encounter deployment errors in Portainer (like "content digest not found"), use our deployment scripts:
+
+**Windows:**
+```powershell
+./deploy-portainer-fix.ps1
+```
+
+**Linux/Mac:**
+```bash
+./deploy-portainer-fix.sh
+```
+
+These scripts will:
+1. Clean Docker build cache
+2. Pre-pull base images
+3. Build with no cache
+4. Start services
+
+### Common Portainer Issues & Solutions
+1. **Digest errors**: Caused by Docker Hub rate limiting or corrupted cache
+2. **Build failures**: Often due to outdated image layers
+3. **Mounting issues**: Fixed by using directory-to-directory mounts
+
+## 🛠️ Troubleshooting
+
+### If containers keep restarting:
+```bash
+# Check logs for specific container
+docker logs <container_name>
+
+# Restart specific service
+docker-compose restart <service_name>
+```
+
+### If build fails with cache issues:
+```bash
+# Clean build cache
+docker builder prune -a
+
+# Rebuild without cache
+docker-compose build --no-cache
+```
+
+### If services can't connect:
+1. Check if all dependencies are listed in `depends_on`
+2. Verify environment variables in `.env` file
+3. Ensure ports are not blocked by firewall
+
 ## Expanding the ESLint configuration
 
 If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
